@@ -15,6 +15,13 @@ library(tseries)
 library(e1071)
 library(forecast)
 library(ggplot2)
+library(gridExtra)
+library(fImport)
+library(fPortfolio)
+library(zoo)
+
+
+
 
 data <- read.csv("portfolio_2015_2025.csv")
 colSums(is.na(data))  # количество NA в каждом столбце
@@ -37,17 +44,191 @@ ret_MTSS <- data$ret_MTSS # МТС - телекоммуникационные у
 ret_NLMK <- data$ret_NLMK # НЛМК(Новолипецкий металлургический комбинат) - металлургия
 ret_SBER <- data$ret_SBER # СберБанк - финансы
 
-adf.test(ret_GAZP)
-adf.test(ret_MGNT)
-adf.test(ret_MTSS)
-adf.test(ret_NLMK)
-adf.test(ret_SBER)
 
 plot.ts(ret_GAZP)
 plot.ts(ret_MGNT)
 plot.ts(ret_MTSS)
 plot.ts(ret_NLMK)
 plot.ts(ret_SBER)
+
+
+
+adf.test(ret_GAZP)
+adf.test(ret_MGNT)
+adf.test(ret_MTSS)
+adf.test(ret_NLMK)
+adf.test(ret_SBER)
+
+
+model.arima = auto.arima(ret_GAZP, max.order = c(3 , 0 ,3) , stationary = TRUE , trace = T , ic = 'aicc')
+
+model.arima
+
+model.arima$residuals %>% ggtsdisplay(plot.type = 'hist' , lag.max = 14)
+
+
+# Проверка на то, что остаточные значения не коррелируют. Тест Юнга-Бокса (Ljung-Box test)
+# если p-value > 0.05, то остатки ведут себя как белый шум
+
+ar.res = model.arima$residuals
+Box.test(model.arima$residuals , lag = 14 , fitdf = 2 , type = 'Ljung-Box')
+
+
+tsdisplay(ar.res^2 , main = 'Squared Residuals')
+
+
+# Model specification
+model.spec = ugarchspec(variance.model = list(model = 'sGARCH' , garchOrder = c(1 , 1)) , 
+                        mean.model = list(armaOrder = c(0 , 0)))
+
+
+model.fit = ugarchfit(spec = model.spec , data = ar.res , solver = 'solnp')
+model.fit
+
+
+par1 = par()  #save graphic parameters
+
+par(mfrow = c(1, 2))
+# generate plots using the which argument Figure-12 1. ACF of
+# standardised residuals
+plot(model.fit, which = 10)
+# 2. Conditional SD (vs |returns|)
+plot(model.fit, which = 3)
+
+
+
+# spec2 with student-t distribution
+spec2 = ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+                   mean.model = list(armaOrder = c(0, 0)),
+                   distribution.model = "std")
+
+
+class(ret_GAZP)
+data$X
+
+ret_GAZP_xts <- xts(ret_GAZP, order.by = as.Date(data$X))
+
+
+var.t = ugarchroll(spec2, data = ret_GAZP_xts, n.ahead = 1, forecast.length = ndays(ret_GAZP_xts) -
+                     500, refit.every = 5, window.size = 500, refit.window = "rolling",
+                   calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
+
+
+# note the plot method provides four plots with option-4 for the VaR
+# forecasts 1% Student-t GARCH VaR
+par(mfrow = c(1, 2))
+plot(var.t, which = 4, VaR.alpha = 0.01)
+# 5% Student-t GARCH VaR
+plot(var.t, which = 4, VaR.alpha = 0.05)
+
+
+
+# backtest for VaR forecasts
+
+report(var.t, VaR.alpha = 0.05)  #default value of alpha is 0.01
+
+
+
+spec2 <- ugarchspec(variance.model = list(model = "eGARCH", garchOrder = c(1,1)),
+                    mean.model = list(armaOrder = c(0,0)),
+                    distribution.model = "std")
+
+
+var.t <- ugarchroll(spec2, data = ret_GAZP_xts, n.ahead = 1, forecast.length = ndays(ret_GAZP_xts) - 500, 
+                    refit.every = 5, window.size = 500, refit.window = "rolling", 
+                    calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
+
+
+
+# note the plot method provides four plots with option-4 for the VaR
+# forecasts 1% Student-t GARCH VaR
+par(mfrow = c(1, 2))
+plot(var.t, which = 4, VaR.alpha = 0.01)
+# 5% Student-t GARCH VaR
+plot(var.t, which = 4, VaR.alpha = 0.05)
+
+
+
+# backtest for VaR forecasts
+
+report(var.t, VaR.alpha = 0.05)  #default value of alpha is 0.01
+
+
+
+
+options(scipen = 999)
+model.fit@fit$matcoef
+
+
+quantile(ret_GAZP , 0.05)
+
+# Тест Жарка-Бера проверяет гипотезу о том, что доходность акций соответствует
+# нормальному распределению
+
+jarque.bera.test(ret_GAZP)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+head(data$ret_GAZP)
+ret_GAZP
+head(data)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ArchTest(ret_GAZP)
 ArchTest(ret_MGNT)
@@ -143,233 +324,24 @@ forecast_gjr_garch_GAZP
 
 
 
-# 2) Анализ: MGNT
 
-################################################################################
-# GARCH(1,1)
-spec_garch_MGNT <- ugarchspec(
-  variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),  # GARCH(1,1)
-  mean.model = list(armaOrder = c(0, 0)),  # ARIMA без фракционности
-  distribution.model = "norm"  # Можешь попробовать "std" или "ged"
-)
 
-# Подгонка модели
-fit_garch_MGNT <- ugarchfit(spec = spec_garch_MGNT, data = ret_MGNT)
-fit_garch_MGNT
 
-forecast_garch_MGNT <- ugarchforecast(fit_garch_MGNT, n.ahead = 10)
-forecast_garch_MGNT
 
-################################################################################
 
 
-################################################################################
-# EGARCH(1,1)
-spec_egarch_MGNT <- ugarchspec(
-  variance.model = list(model = "eGARCH", garchOrder = c(1, 1)),  # GARCH(1,1)
-  mean.model = list(armaOrder = c(0, 0)),  # ARIMA без фракционности
-  distribution.model = "norm"  # Можешь попробовать "std" или "ged"
-)
 
-# Подгонка модели
-fit_egarch_MGNT <- ugarchfit(spec = spec_egarch_MGNT, data = ret_MGNT)
-fit_egarch_MGNT
 
-forecast_egarch_MGNT <- ugarchforecast(fit_egarch_MGNT, n.ahead = 10)
-forecast_egarch_MGNT
 
-################################################################################
 
 
-################################################################################
-# GJR GARCH(1,1)
-spec_gjr_garch_MGNT <- ugarchspec(
-  variance.model = list(model = "gjrGARCH", garchOrder = c(1, 1)),  # GARCH(1,1)
-  mean.model = list(armaOrder = c(0, 0)),  # ARIMA без фракционности
-  distribution.model = "norm"  # Можешь попробовать "std" или "ged"
-)
 
-# Подгонка модели
-fit_gjr_garch_MGNT <- ugarchfit(spec = spec_gjr_garch_MGNT, data = ret_MGNT)
-fit_gjr_garch_MGNT
 
-forecast_gjr_garch_MGNT <- ugarchforecast(fit_gjr_garch_MGNT, n.ahead = 10)
-forecast_gjr_garch_MGNT
 
-################################################################################
 
 
 
 
-# 3) Анализ: MTSS
 
-################################################################################
-# GARCH(1,1)
-spec_garch_MTSS <- ugarchspec(
-  variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),  # GARCH(1,1)
-  mean.model = list(armaOrder = c(0, 0)),  # ARIMA без фракционности
-  distribution.model = "norm"  # Можешь попробовать "std" или "ged"
-)
 
-# Подгонка модели
-fit_garch_MTSS <- ugarchfit(spec = spec_garch_MTSS, data = ret_MTSS)
-fit_garch_MTSS
-
-forecast_garch_MTSS <- ugarchforecast(fit_garch_MTSS, n.ahead = 10)
-forecast_garch_MTSS
-
-################################################################################
-
-
-################################################################################
-# EGARCH(1,1)
-spec_egarch_MTSS <- ugarchspec(
-  variance.model = list(model = "eGARCH", garchOrder = c(1, 1)),  # GARCH(1,1)
-  mean.model = list(armaOrder = c(0, 0)),  # ARIMA без фракционности
-  distribution.model = "norm"  # Можешь попробовать "std" или "ged"
-)
-
-# Подгонка модели
-fit_egarch_MTSS <- ugarchfit(spec = spec_egarch_MTSS, data = ret_MTSS)
-fit_egarch_MTSS
-
-forecast_egarch_MTSS <- ugarchforecast(fit_egarch_MTSS, n.ahead = 10)
-forecast_egarch_MTSS
-
-################################################################################
-
-
-################################################################################
-# GJR GARCH(1,1)
-spec_gjr_garch_MTSS <- ugarchspec(
-  variance.model = list(model = "gjrGARCH", garchOrder = c(1, 1)),  # GARCH(1,1)
-  mean.model = list(armaOrder = c(0, 0)),  # ARIMA без фракционности
-  distribution.model = "norm"  # Можешь попробовать "std" или "ged"
-)
-
-# Подгонка модели
-fit_gjr_garch_MTSS <- ugarchfit(spec = spec_gjr_garch_MTSS, data = ret_MTSS)
-fit_gjr_garch_MTSS
-
-forecast_gjr_garch_MTSS <- ugarchforecast(fit_gjr_garch_MTSS, n.ahead = 10)
-forecast_gjr_garch_MTSS
-
-################################################################################
-
-
-
-
-# 4) Анализ: NLMK
-
-################################################################################
-# GARCH(1,1)
-spec_garch_NLMK <- ugarchspec(
-  variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),  # GARCH(1,1)
-  mean.model = list(armaOrder = c(0, 0)),  # ARIMA без фракционности
-  distribution.model = "norm"  # Можешь попробовать "std" или "ged"
-)
-
-# Подгонка модели
-fit_garch_NLMK <- ugarchfit(spec = spec_garch_NLMK, data = ret_NLMK)
-fit_garch_NLMK
-
-forecast_garch_NLMK <- ugarchforecast(fit_garch_NLMK, n.ahead = 10)
-forecast_garch_NLMK
-
-################################################################################
-
-
-################################################################################
-# EGARCH(1,1)
-spec_egarch_NLMK <- ugarchspec(
-  variance.model = list(model = "eGARCH", garchOrder = c(1, 1)),  # GARCH(1,1)
-  mean.model = list(armaOrder = c(0, 0)),  # ARIMA без фракционности
-  distribution.model = "norm"  # Можешь попробовать "std" или "ged"
-)
-
-# Подгонка модели
-fit_egarch_NLMK <- ugarchfit(spec = spec_egarch_NLMK, data = ret_NLMK)
-fit_egarch_NLMK
-
-forecast_egarch_NLMK <- ugarchforecast(fit_egarch_NLMK, n.ahead = 10)
-forecast_egarch_NLMK
-
-################################################################################
-
-
-################################################################################
-# GJR GARCH(1,1)
-spec_gjr_garch_NLMK <- ugarchspec(
-  variance.model = list(model = "gjrGARCH", garchOrder = c(1, 1)),  # GARCH(1,1)
-  mean.model = list(armaOrder = c(0, 0)),  # ARIMA без фракционности
-  distribution.model = "norm"  # Можешь попробовать "std" или "ged"
-)
-
-# Подгонка модели
-fit_gjr_garch_NLMK <- ugarchfit(spec = spec_gjr_garch_NLMK, data = ret_NLMK)
-fit_gjr_garch_NLMK
-
-forecast_gjr_garch_NLMK <- ugarchforecast(fit_gjr_garch_NLMK, n.ahead = 10)
-forecast_gjr_garch_NLMK
-
-################################################################################
-
-
-
-
-
-# 5) Анализ: SBER
-
-################################################################################
-# GARCH(1,1)
-spec_garch_SBER <- ugarchspec(
-  variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),  # GARCH(1,1)
-  mean.model = list(armaOrder = c(0, 0)),  # ARIMA без фракционности
-  distribution.model = "norm"  # Можешь попробовать "std" или "ged"
-)
-
-# Подгонка модели
-fit_garch_SBER <- ugarchfit(spec = spec_garch_SBER, data = ret_SBER)
-fit_garch_SBER
-
-forecast_garch_SBER <- ugarchforecast(fit_garch_SBER, n.ahead = 10)
-forecast_garch_SBER
-
-################################################################################
-
-
-################################################################################
-# EGARCH(1,1)
-spec_egarch_SBER <- ugarchspec(
-  variance.model = list(model = "eGARCH", garchOrder = c(1, 1)),  # GARCH(1,1)
-  mean.model = list(armaOrder = c(0, 0)),  # ARIMA без фракционности
-  distribution.model = "norm"  # Можешь попробовать "std" или "ged"
-)
-
-# Подгонка модели
-fit_egarch_SBER <- ugarchfit(spec = spec_egarch_SBER, data = ret_SBER)
-fit_egarch_SBER
-
-forecast_egarch_SBER <- ugarchforecast(fit_egarch_SBER, n.ahead = 10)
-forecast_egarch_SBER
-
-################################################################################
-
-
-################################################################################
-# GJR GARCH(1,1)
-spec_gjr_garch_SBER <- ugarchspec(
-  variance.model = list(model = "gjrGARCH", garchOrder = c(1, 1)),  # GARCH(1,1)
-  mean.model = list(armaOrder = c(0, 0)),  # ARIMA без фракционности
-  distribution.model = "norm"  # Можешь попробовать "std" или "ged"
-)
-
-# Подгонка модели
-fit_gjr_garch_SBER <- ugarchfit(spec = spec_gjr_garch_SBER, data = ret_SBER)
-fit_gjr_garch_SBER
-
-forecast_gjr_garch_SBER <- ugarchforecast(fit_gjr_garch_SBER, n.ahead = 10)
-forecast_gjr_garch_SBER
-
-################################################################################
 
