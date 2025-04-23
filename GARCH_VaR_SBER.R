@@ -19,7 +19,6 @@ library(FinTS)
 library(fGarch)
 library(tseries)
 
-
 data <- read.csv("portfolio_2015_2025.csv")
 colSums(is.na(data))  # количество NA в каждом столбце
 head(data)
@@ -33,24 +32,44 @@ data$X <- as.Date(data$X, format = "%Y-%m-%d")
 
 data_xts <- xts(data$ret_GAZP, order.by = data$X)
 
-
 subset_xts <- window(data_xts, start = as.Date(start_date),
                      end = as.Date(end_date))
+
+
+data_xts_SBER <- xts(data$NLMK, order.by = data$X)
+
+subset_xts_SBER <- window(data_xts_SBER, start = as.Date(start_date),
+                     end = as.Date(end_date))
+
+
 
 index_data <- index(subset_xts)
 
 
 rets = subset_xts
 
+ret = subset_xts_SBER
+
+# Преобразование xts в data.frame
+df <- data.frame(date = index(rets), value = coredata(rets)[,1])
+
+ggplot(df, aes(x = date, y = value)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Log SBER",
+       x = "Дата",
+       y = "Цена") +
+  theme_minimal()
+
+
+tsdisplay(rets)
+
+
 
 # Стационарность
-
 adf.test(rets)
 
 
 # Оценка среднего через ARMA
-
-
 model.arima = auto.arima(rets , max.order = c(3 , 0 ,3) , stationary = TRUE , trace = T , ic = 'aicc')
 model.arima
 
@@ -60,11 +79,8 @@ model.arima$residuals %>% ggtsdisplay(plot.type = 'hist' , lag.max = 14)
 ar.res = model.arima$residuals
 Box.test(model.arima$residuals , lag = 14 , fitdf = 2 , type = 'Ljung-Box')
 
+tsdisplay(ar.res, main = 'Residuals')
 tsdisplay(ar.res^2 , main = 'Squared Residuals')
-
-
-
-
 
 
 ################################################################################
@@ -265,7 +281,7 @@ ggplot(data_combined, aes(x = time, y = value)) +
     "GARCH-M(1,1)" = "#FF7F0E"      # оранжевый
   )) +
   
-  labs(title = "GAZP: Сравнение моделей волатильности (норм. распр)",
+  labs(title = "SBER: Сравнение моделей волатильности (норм. распр)",
        x = "Дата", y = "σ", color = "Модель") +
   theme_minimal() +
   theme(legend.position = "bottom")
@@ -324,7 +340,7 @@ ggplot(data_combined, aes(x = time, y = value)) +
     "GARCH-M(1,1)" = "#FF7F0E"      # оранжевый
   )) +
   
-  labs(title = "GAZP: Сравнение моделей волатильности (t. распр)",
+  labs(title = "SBER: Сравнение моделей волатильности (t. распр)",
        x = "Дата", y = "σ", color = "Модель") +
   theme_minimal() +
   theme(legend.position = "bottom")
@@ -391,7 +407,7 @@ ggplot(data_combined, aes(x = time, y = value)) +
     "GARCH-M(1,1)" = "#FF7F0E"      # оранжевый
   )) +
   
-  labs(title = "GAZP: Реализованная волатильность и модели GARCH (норм. распр)",
+  labs(title = "SBER: Реализованная волатильность и модели GARCH (норм. распр)",
        x = "Дата", y = "σ", color = "Модель") +
   theme_minimal() +
   theme(legend.position = "bottom")
@@ -448,7 +464,7 @@ ggplot(data_combined, aes(x = time, y = value)) +
     "GARCH-M(1,1)" = "#FF7F0E"      # оранжевый
   )) +
   
-  labs(title = "GAZP: Реализованная волатильность и модели GARCH (t. распр)",
+  labs(title = "SBER: Реализованная волатильность и модели GARCH (t. распр)",
        x = "Дата", y = "σ", color = "Модель") +
   theme_minimal() +
   theme(legend.position = "bottom")
@@ -631,8 +647,8 @@ cat("GARCH-M(1,1) - RMSE:", metrics1$garchm$rmse, "MAE:", metrics1$garchm$mae, "
 
 ##################################### GARCH_norm(1,1)
 var.n.garch_norm = ugarchroll(spec_garch_norm, data = ar.res, n.ahead = 1,forecast.length = ndays(ar.res) -
-                     500, refit.every = 5, window.size = 500, refit.window = "rolling",
-                   calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
+                                500, refit.every = 5, window.size = 500, refit.window = "rolling",
+                              calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
 
 
 
@@ -650,8 +666,8 @@ report(var.n.garch_norm, VaR.alpha = 0.05)
 
 ##################################### EGARCH_norm(1,1)
 var.n.egarch_norm = ugarchroll(spec_egarch_norm, data = ar.res, n.ahead = 1,forecast.length = ndays(ar.res) -
-                                500, refit.every = 5, window.size = 500, refit.window = "rolling",
-                              calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
+                                 500, refit.every = 5, window.size = 500, refit.window = "rolling",
+                               calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
 
 
 # note the plot method provides four plots with option-4 for the VaR
@@ -667,8 +683,8 @@ report(var.n.egarch_norm, VaR.alpha = 0.05)
 
 ################################### GJR-GARCH_norm(1,1)
 var.n.gjr_norm = ugarchroll(spec_gjr_norm, data = ar.res, n.ahead = 1,forecast.length = ndays(ar.res) -
-                                 500, refit.every = 5, window.size = 500, refit.window = "rolling",
-                               calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
+                              500, refit.every = 5, window.size = 500, refit.window = "rolling",
+                            calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
 
 # note the plot method provides four plots with option-4 for the VaR
 # forecasts 1% Student-t GARCH VaR
@@ -683,8 +699,8 @@ report(var.n.gjr_norm, VaR.alpha = 0.05)
 
 ################################### GARCH-M_norm(1,1)
 var.n.garchm_norm = ugarchroll(spec_garchm_norm, data = ar.res, n.ahead = 1,forecast.length = ndays(ar.res) -
-                              500, refit.every = 5, window.size = 500, refit.window = "rolling",
-                            calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
+                                 500, refit.every = 5, window.size = 500, refit.window = "rolling",
+                               calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
 
 # note the plot method provides four plots with option-4 for the VaR
 # forecasts 1% Student-t GARCH VaR
@@ -695,6 +711,110 @@ plot(var.n.garchm_norm, which = 4, VaR.alpha = 0.05)
 
 report(var.n.garchm_norm, VaR.alpha = 0.01)
 report(var.n.garchm_norm, VaR.alpha = 0.05)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##################################### GARCH_std(1,1)
+var.n.garch_std = ugarchroll(spec_garch_std, data = ar.res, n.ahead = 1,forecast.length = ndays(ar.res) -
+                                500, refit.every = 5, window.size = 500, refit.window = "rolling",
+                              calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
+
+
+
+# note the plot method provides four plots with option-4 for the VaR
+# forecasts 1% Student-t GARCH VaR
+par(mfrow = c(1, 2))
+plot(var.n.garch_std, which = 4, VaR.alpha = 0.01)
+# 5% Student-t GARCH VaR
+plot(var.n.garch_std, which = 4, VaR.alpha = 0.05)
+
+report(var.n.garch_std, VaR.alpha = 0.01)
+report(var.n.garch_std, VaR.alpha = 0.05)
+
+
+
+##################################### EGARCH_std(1,1)
+var.n.egarch_std = ugarchroll(spec_egarch_std, data = ar.res, n.ahead = 1,forecast.length = ndays(ar.res) -
+                                 500, refit.every = 5, window.size = 500, refit.window = "rolling",
+                               calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
+
+
+# note the plot method provides four plots with option-4 for the VaR
+# forecasts 1% Student-t GARCH VaR
+par(mfrow = c(1, 2))
+plot(var.n.egarch_std, which = 4, VaR.alpha = 0.01)
+# 5% Student-t GARCH VaR
+plot(var.n.egarch_std, which = 4, VaR.alpha = 0.05)
+
+report(var.n.egarch_std, VaR.alpha = 0.01)
+report(var.n.egarch_std, VaR.alpha = 0.05)
+
+
+################################### GJR-GARCH_std(1,1)
+var.n.gjr_std = ugarchroll(spec_gjr_std, data = ar.res, n.ahead = 1,forecast.length = ndays(ar.res) -
+                              500, refit.every = 5, window.size = 500, refit.window = "rolling",
+                            calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
+
+# note the plot method provides four plots with option-4 for the VaR
+# forecasts 1% Student-t GARCH VaR
+par(mfrow = c(1, 2))
+plot(var.n.gjr_std, which = 4, VaR.alpha = 0.01)
+# 5% Student-t GARCH VaR
+plot(var.n.gjr_std, which = 4, VaR.alpha = 0.05)
+
+report(var.n.gjr_std, VaR.alpha = 0.01)
+report(var.n.gjr_std, VaR.alpha = 0.05)
+
+
+################################### GARCH-M_std(1,1)
+var.n.garchm_std = ugarchroll(spec_garchm_std, data = ar.res, n.ahead = 1,forecast.length = ndays(ar.res) -
+                                 500, refit.every = 5, window.size = 500, refit.window = "rolling",
+                               calculate.VaR = TRUE, VaR.alpha = c(0.01, 0.05))
+
+# note the plot method provides four plots with option-4 for the VaR
+# forecasts 1% Student-t GARCH VaR
+par(mfrow = c(1, 2))
+plot(var.n.garchm_std, which = 4, VaR.alpha = 0.01)
+# 5% Student-t GARCH VaR
+plot(var.n.garchm_std, which = 4, VaR.alpha = 0.05)
+
+report(var.n.garchm_std, VaR.alpha = 0.01)
+report(var.n.garchm_std, VaR.alpha = 0.05)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
